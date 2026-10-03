@@ -206,7 +206,7 @@
   }
 
   // ---------------------------------------------------------------- geometry / sizing
-  let W = 0, H = 0, dpr = 1, base = 1;
+  let W = 0, H = 0, dpr = 1, base = 1, WW = 1, worldX0 = 0, worldX1 = 0, modernPaths = null;
   let proj, path, T = d3.zoomIdentity, yTop = 0, yBot = 0;
   let pplXY = []; // per-country Float32Array of projected x,y
 
@@ -215,9 +215,13 @@
     W = r.width; H = r.height;
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     for (const c of [mapCv, pplCv, cityCv]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
-    base = W / (2 * Math.PI);
     const barH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--bar-h")) || 118;
+    const topH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 56;
     const visH = H - barH;
+    // fit the world to the width on wide screens; on tall phone screens fit it to the height instead,
+    // so the map stays big and you pan sideways
+    base = Math.max(W / (2 * Math.PI), (H - barH - topH) / 3.75);
+    WW = 2 * Math.PI * base; worldX0 = W / 2 - WW / 2; worldX1 = W / 2 + WW / 2;
     proj = d3.geoMercator().scale(base).translate([W / 2, 0]).precision(0.3);
     const ty = visH / 2 - proj([0, 30])[1];
     proj.translate([W / 2, ty]);
@@ -232,9 +236,9 @@
       return a;
     });
     for (const s of snapCache.values()) { s.labels = null; s.p = null; }
-    staticPaths = null;
+    staticPaths = null; modernPaths = null;
     centroid.fill(null); radiusCache.length = 0; cityXY.length = 0;
-    zoom.translateExtent([[0, yTop - 8], [W, yBot + 8]]).extent([[0, 0], [W, H]]);
+    zoom.translateExtent([[worldX0, yTop - 8], [worldX1, yBot + 8]]).extent([[0, 0], [W, H]]);
     drawFrame();
   }
 
@@ -301,15 +305,81 @@
   // Some historical polygons are degenerate (NaN coordinates, whole-world rings). One bad subpath
   // makes the browser drop everything after it, so strip them out.
   const cleanPath = (s) => (s || "").split("M").filter((seg) => seg && !seg.includes("NaN")).map((seg) => "M" + seg).join("");
+  // Historical realm outlines are drawn with straight, coarse edges. Rounding them with a centripetal
+  // Catmull-Rom curve gives soft, organic shapes. Anything that wraps the antimeridian falls back to d3.
+  const lineClosed = d3.line().curve(d3.curveCatmullRomClosed.alpha(0.5));
+  const lineOpen = d3.line().curve(d3.curveCatmullRom.alpha(0.5));
+  function projectRing(ring) {
+    const pts = [];
+    for (const c of ring) {
+      const q = proj(c);
+      if (!isFinite(q[0]) || !isFinite(q[1])) return null;
+      const l = pts[pts.length - 1];
+      if (l && Math.abs(q[0] - l[0]) < 0.05 && Math.abs(q[1] - l[1]) < 0.05) continue;   // drop duplicates
+      if (l && Math.abs(q[0] - l[0]) > WW * 0.4) return null;                              // wraps the globe
+      pts.push(q);
+    }
+    return pts;
+  }
+  function smoothFeature(f) {
+    const g = f.geometry;
+    if (!g) return null;
+    const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : null;
+    if (!polys) return null;
+    const p = new Path2D();
+    for (const rings of polys) for (const ring of rings) {
+      const pts = projectRing(ring);
+      if (!pts) return null;
+      if (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop();
+      if (pts.length < 3) continue;
+      lineClosed.context(p)(pts);
+    }
+    return p;
+  }
+  function smoothMesh(m) {
+    const p = new Path2D();
+    const lines = m.type === "MultiLineString" ? m.coordinates : m.type === "LineString" ? [m.coordinates] : [];
+    for (const line of lines) {
+      let chunk = [], prev = null;
+      const flush = () => { if (chunk.length > 1) lineOpen.context(p)(chunk); chunk = []; };
+      for (const c of line) {
+        const q = proj(c);
+        if (!isFinite(q[0]) || !isFinite(q[1])) { flush(); prev = null; continue; }
+        if (prev && Math.abs(q[0] - prev[0]) > WW * 0.4) flush();
+        if (!prev || Math.abs(q[0] - prev[0]) > 0.05 || Math.abs(q[1] - prev[1]) > 0.05) { chunk.push(q); prev = q; }
+      }
+      flush();
+    }
+    return p;
+  }
   function ensurePaths(snap) {
     if (snap.p) return snap.p;
     const str = d3.geoPath(proj);
     const maxArea = 6 * base * base;
     const ok = snap.feats.map((f) => Math.abs(path.area(f)) < maxArea);
-    const land = new Path2D(snap.feats.map((f, i) => (ok[i] ? cleanPath(str(f)) : "")).join(""));
-    const feat = snap.feats.map((f, i) => (snap.fcol[i] && ok[i] ? new Path2D(cleanPath(str(f))) : null));
-    snap.p = { land, feat, borders: new Path2D(cleanPath(str(snap.borders))), coast: new Path2D(cleanPath(str(snap.coast))) };
+    const feat = snap.feats.map((f, i) => {
+      if (!snap.fcol[i] || !ok[i]) return null;
+      return smoothFeature(f) || new Path2D(cleanPath(str(f)));
+    });
+    snap.p = { feat, borders: smoothMesh(snap.borders) };
     return snap.p;
+  }
+
+  // The old border data has coarse, blocky coastlines. So the coast and land are always drawn from the
+  // accurate modern outline; each era supplies only its realms, colours and borders, clipped to that land.
+  let modernGeo = null;
+  function ensureModern() {
+    if (modernPaths) return modernPaths;
+    if (!modernGeo) {
+      const topo = D.maps[2020], obj = topo.objects.polys;
+      modernGeo = { feats: topojson.feature(topo, obj).features, coast: topojson.mesh(topo, obj, (a, b) => a === b) };
+    }
+    const str = d3.geoPath(proj);
+    modernPaths = {
+      land: new Path2D(modernGeo.feats.map((f) => cleanPath(str(f))).join("")),
+      coast: new Path2D(cleanPath(str(modernGeo.coast))),
+    };
+    return modernPaths;
   }
 
   let currentSnap = null;
@@ -317,18 +387,18 @@
     const snap = currentSnap;
     if (!snap) return;
     const k = T.k;
-    const P = ensurePaths(snap), S = ensureStatic();
+    const P = ensurePaths(snap), S = ensureStatic(), M = ensureModern();
     mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     mctx.clearRect(0, 0, W, H);
     mctx.save();
     mctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * T.x, dpr * T.y);
-    mctx.beginPath(); mctx.rect(-4, yTop, W + 8, yBot - yTop); mctx.clip(); // crop polar regions
+    mctx.beginPath(); mctx.rect(worldX0 - 2, yTop, WW + 4, yBot - yTop); mctx.clip(); // crop polar regions
 
     // sea
     const sea = mctx.createLinearGradient(0, yTop, 0, yBot);
     sea.addColorStop(0, "#9eb7b5"); sea.addColorStop(0.5, "#a9c2b9"); sea.addColorStop(1, "#97b4b2");
     mctx.fillStyle = sea;
-    mctx.fillRect(-4, yTop, W + 8, yBot - yTop);
+    mctx.fillRect(worldX0 - 2, yTop, WW + 4, yBot - yTop);
 
     // rhumb lines & graticule (land is painted over them)
     mctx.lineWidth = 0.7 / k; mctx.strokeStyle = "rgba(95,70,45,.17)"; mctx.stroke(S.rh);
@@ -336,21 +406,22 @@
     // watery coast shading
     mctx.lineJoin = "round";
     for (const [w, al] of [[11, 0.06], [7.5, 0.07], [4.5, 0.09], [2.2, 0.12]]) {
-      mctx.lineWidth = w / k; mctx.strokeStyle = `rgba(58,98,104,${al})`; mctx.stroke(P.coast);
+      mctx.lineWidth = w / k; mctx.strokeStyle = `rgba(58,98,104,${al})`; mctx.stroke(M.coast);
     }
 
     // land
-    mctx.fillStyle = "#f2e5bd"; mctx.fill(P.land);
+    mctx.fillStyle = "#f2e5bd"; mctx.fill(M.land);
 
-    // watercoloured realms
+    // watercoloured realms and borders, kept inside the true coastline
+    mctx.save(); mctx.clip(M.land);
     const fast = dragging;
     for (let i = 0; i < P.feat.length; i++) {
       const p = P.feat[i];
       if (!p) continue;
       const c = snap.fcol[i];
-      mctx.globalAlpha = 0.34; mctx.fillStyle = c; mctx.fill(p);
+      mctx.globalAlpha = 0.34; mctx.fillStyle = c; mctx.fill(p, "evenodd");
       if (!fast) {
-        mctx.save(); mctx.clip(p);
+        mctx.save(); mctx.clip(p, "evenodd");
         mctx.globalAlpha = 0.5; mctx.strokeStyle = c; mctx.lineWidth = 7 / k; mctx.stroke(p);
         mctx.restore();
       }
@@ -361,8 +432,9 @@
     mctx.setLineDash([5 / k, 2.2 / k, 1.2 / k, 2.2 / k]);
     mctx.lineWidth = 1.1 / k; mctx.strokeStyle = "rgba(92,50,25,.8)"; mctx.stroke(P.borders);
     mctx.setLineDash([]);
+    mctx.restore();
     // coast
-    mctx.lineWidth = 1.25 / k; mctx.strokeStyle = "#3f2a16"; mctx.stroke(P.coast);
+    mctx.lineWidth = 1.25 / k; mctx.strokeStyle = "#3f2a16"; mctx.stroke(M.coast);
     mctx.restore();
 
     drawLabels(snap, k);
@@ -723,10 +795,10 @@
     if (dist < 3 && dlk < 0.04) { flight = null; if (opts.onDone) opts.onDone(); return; }
     // pull back in the middle of the move: more for long hops, never below the whole-world view
     // same city or neighbourhood: glide, don't zoom out. Only a real change of place pulls the camera back.
-    const near = dist < W * 0.03 && dlk < 0.8;
+    const near = dist < WW * 0.03 && dlk < 0.8;
     const avg = (from.lk + lk1) / 2;
-    const dip = near ? 0 : Math.max(0, Math.min(avg * 0.92, 0.95 + 1.0 * Math.min(1, dist / (W * 0.5))));
-    const dur = (opts.dur || (near ? 2.2 + 0.5 * dlk : 3.0 + 1.8 * Math.min(1, dist / (W * 0.7)) + 0.6 * dlk)) * (opts.fixed ? 1 : pace() ** 0.5);
+    const dip = near ? 0 : Math.max(0, Math.min(avg * 0.92, 0.95 + 1.0 * Math.min(1, dist / (WW * 0.5))));
+    const dur = (opts.dur || (near ? 2.2 + 0.5 * dlk : 3.0 + 1.8 * Math.min(1, dist / (WW * 0.7)) + 0.6 * dlk)) * (opts.fixed ? 1 : pace() ** 0.5);
     flight = { t0: performance.now(), dur: dur * 1000, from: { ...from }, to: { cx: camTarget.cx, cy: camTarget.cy, lk: lk1 }, dip, onDone: opts.onDone };
   }
   function camStep(now) {

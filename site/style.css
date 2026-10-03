@@ -187,15 +187,76 @@ body:not(.intro-on) #intro { opacity: 0; visibility: hidden; pointer-events: non
 body.intro-on #top-bar, body.intro-on #info, body.intro-on #controls, body.intro-on #zoomBtns { opacity: 0; }
 #top-bar, #info, #controls, #zoomBtns { transition: opacity 1.6s ease .4s; }
 
+/* ---------- phones & tablets ---------- */
+#top-bar { padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+#foot { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+#controls { bottom: calc(26px + env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 760px) {
-  :root { --bar-h: 108px; }
+  :root { --bar-h: 160px; --top-h: 52px; }
+  #top-bar h1 { font-size: 11px; letter-spacing: .34em; }
   #top-bar .legend, #growth, #credit, #info .stat + .stat { display: none; }
   #foot { justify-content: center; }
+  #promo { font-size: 9px; letter-spacing: .2em; }
+  /* the year and total sit quietly in the corner so the map stays visible */
+  #info { top: calc(52px + env(safe-area-inset-top, 0px)); right: 18px; }
   #info .year { font-size: 40px; }
-  #speed, #cine, #vol { display: none; }
+  #info .roman { font-size: 9px; margin-top: 3px; }
+  #info .stat { margin-top: 8px; }
+  #info .stat b { font-size: 14px; }
+  #info .stat span { font-size: 8px; }
+  /* controls: timeline on top, buttons below */
+  #controls { height: 124px; display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: 62px 46px; gap: 0 10px; align-items: center; padding: 6px 18px 4px; }
+  #controls::before { inset: -26px 0 0; }
+  .timeline { grid-column: 1 / -1; grid-row: 1; margin: 0; height: 62px; }
+  .nav { grid-column: 1; grid-row: 2; margin: 0; }
+  .lapse { grid-column: 2; grid-row: 2; margin: 0; justify-self: end; gap: 10px; }
+  .vol { grid-column: 3; grid-row: 2; margin: 0; }
+  #cine { display: none; }
+  #vol { display: none; }
+  #play { padding: 9px 13px; }
   #play .tx { display: none; }
-  #play { padding: 8px 12px; }
+  #speed { gap: 10px; }
+  #speed button { font-size: 9px; letter-spacing: .14em; padding: 6px 0; }
+  .nav button { width: 38px; height: 42px; font-size: 28px; }
+  #zoomBtns { right: 12px; bottom: calc(var(--bar-h) + 6px); }
+  #splash { bottom: calc(var(--bar-h) + 12px); }
+  #splash h2 { font-size: clamp(22px, 7vw, 30px); letter-spacing: .12em; }
+  #splash p { font-size: 14px; }
+  #splash::before { inset: -60px -30px -30px; }
   #rome .label i { display: none; }
+  .vol { margin-top: 0; }
 }
-@media (max-width: 520px) { #rome .label { display: none; } .nav { display: none; } }
+@media (max-width: 520px) {
+  #rome .label { display: none; }
+  #intro h1 { letter-spacing: .24em; }
+  #begin { padding: 14px 24px; letter-spacing: .3em; }
+}
+/* phones held sideways: very little height, so strip back to the essentials */
+@media (max-height: 520px) and (orientation: landscape) {
+  :root { --bar-h: 96px; --top-h: 40px; }
+  #foot, #info .stat, #info .roman, #top-bar .legend { display: none; }
+  #info { top: 46px; }
+  #info .year { font-size: 34px; }
+  #controls { height: 66px; bottom: 8px; display: flex; grid-template-rows: none; gap: 14px; padding: 0 22px; }
+  .timeline { height: 56px; grid-column: auto; }
+  #cine, #vol { display: none; }
+  #splash { bottom: 86px; width: min(560px, 70vw); }
+  #splash h2 { font-size: 22px; }
+  #splash .s-rule { margin: 8px auto 6px; }
+  #splash p { font-size: 12.5px; line-height: 1.35; }
+  #zoomBtns { bottom: 80px; }
+}
+/* touch: bigger hit areas */
+@media (pointer: coarse) {
+  #slider::-webkit-slider-thumb { width: 26px; height: 26px; margin-top: -12px; box-shadow: 0 0 0 6px rgba(239, 227, 196, .16); }
+  #slider::-moz-range-thumb { width: 26px; height: 26px; }
+  #slider { height: 36px; top: 10px; }
+  #zoomBtns button { width: 40px; height: 40px; font-size: 18px; }
+  #mute { width: 40px; height: 40px; }
+  #speed button, #cine { padding: 8px 2px; }
+}
 @media (prefers-reduced-motion: reduce) { #grain, #motes, #rome .pulse, #focus .ring { animation: none; } }
+
+/* keep the end labels of the timeline on screen */
+#ticks span:first-child { transform: none; }
+#ticks span:last-child { transform: translateX(-100%); }
