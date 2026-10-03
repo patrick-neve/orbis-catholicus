@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orbis Catholicus — The Growth of the Catholic Church, AD 1–2026</title>
+<meta name="description" content="A cinematic old-world map of the growth of the Catholic Church from AD 1 to the present, with changing borders. Each little figure stands for 10,000 Catholics.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d0805'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23c9a45c'%3E%E2%9C%A0%3C/text%3E%3C/svg%3E">
+<link rel="canonical" href="https://orbiscatholicus.catholicpat.com/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Orbis Catholicus — The Growth of the Catholic Church, AD 1–2026">
+<meta property="og:description" content="Scroll through two thousand years of the Church and the world on a cinematic old-world map. Each figure stands for 10,000 Catholics.">
+<meta property="og:url" content="https://orbiscatholicus.catholicpat.com/">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="intro-on">
+<main id="stage">
+  <canvas id="map" aria-label="Map of the world"></canvas>
+  <canvas id="people" aria-hidden="true"></canvas>
+  <canvas id="cities" aria-hidden="true"></canvas>
+
+  <!-- Rome -->
+  <div id="rome" aria-label="Rome">
+    <span class="pulse"></span><span class="pulse p2"></span>
+    <svg viewBox="-20 -20 40 40" class="keys" aria-hidden="true">
+      <circle r="17" fill="#7d1a12" stroke="#d9b24a" stroke-width="2.4"/>
+      <g stroke-linecap="round" fill="none">
+        <path d="M-9 9 L8 -8" stroke="#e7c765" stroke-width="3"/>
+        <path d="M9 9 L-8 -8" stroke="#efe6cf" stroke-width="3"/>
+      </g>
+      <circle cx="9" cy="-9" r="3.6" fill="none" stroke="#e7c765" stroke-width="2.2"/>
+      <circle cx="-9" cy="-9" r="3.6" fill="none" stroke="#efe6cf" stroke-width="2.2"/>
+    </svg>
+    <span class="label"><b>ROMA</b><i>See of Peter</i></span>
+  </div>
+
+  <!-- the place where the story is happening right now -->
+  <div id="focus" aria-hidden="true"><span class="ring r1"></span><span class="ring r2"></span><span class="dot"></span></div>
+
+  <div id="paper"></div>
+  <div id="spot"></div>
+  <div id="motes" aria-hidden="true"></div>
+  <div id="grain" aria-hidden="true"></div>
+  <svg id="frame" aria-hidden="true"></svg>
+
+  <header id="top-bar">
+    <h1>Orbis Catholicus</h1>
+    <div class="legend"><canvas id="legendFig" width="40" height="64"></canvas><span>10,000 Catholics</span></div>
+  </header>
+
+  <aside id="info">
+    <div class="year" id="yearBig">2026</div>
+    <div class="roman" id="roman">MMXXVI</div>
+    <div class="stat"><b id="catTotal">—</b><span>Catholics</span></div>
+    <div class="stat"><b id="catPct">—</b><span>of mankind</span></div>
+  </aside>
+
+  <!-- cinematic title card for historical events -->
+  <section id="splash" aria-live="polite">
+    <div class="s-year" id="sYear"></div>
+    <h2 id="sTitle"></h2>
+    <div class="s-rule"></div>
+    <p id="sText"></p>
+  </section>
+
+  <!-- where growth is happening -->
+  <div id="growth"><span class="g-h">Growing in</span><span id="growthList"></span></div>
+
+  <div id="zoomBtns">
+    <button id="zin" title="Zoom in" aria-label="Zoom in">+</button>
+    <button id="zout" title="Zoom out" aria-label="Zoom out">−</button>
+    <button id="zrome" title="Fly to Rome" aria-label="Fly to Rome">✠</button>
+    <button id="zhome" title="Whole world" aria-label="Whole world">⌂</button>
+  </div>
+
+  <footer id="controls">
+    <div class="nav">
+      <button id="prevEv" title="Previous event" aria-label="Previous event">‹</button>
+      <button id="nextEv" title="Next event" aria-label="Next event">›</button>
+    </div>
+    <div class="timeline">
+      <div id="pins"></div>
+      <div id="scrubTip"></div>
+      <input id="slider" type="range" min="1" max="2026" step="1" value="2026" aria-label="Year">
+      <div id="ticks"></div>
+    </div>
+    <div class="lapse">
+      <button id="play" aria-label="Play time-lapse"><span class="ic">▶</span><span class="tx">Time-lapse</span></button>
+      <div id="speed" role="group" aria-label="Time-lapse speed">
+        <button data-v="60" data-pace="1.3">Slow</button><button data-v="120" data-pace="1" class="on">Steady</button><button data-v="260" data-pace="0.6">Fast</button>
+      </div>
+    </div>
+    <button id="cine" class="toggle on" title="Camera follows the story" aria-pressed="true">Auto camera</button>
+    <div class="vol">
+      <button id="mute" aria-label="Mute music" title="Mute / unmute music">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/>
+          <g class="waves"><path d="M15.2 9.2a4 4 0 0 1 0 5.6"/><path d="M17.8 6.8a7.4 7.4 0 0 1 0 10.4"/></g>
+          <g class="cross"><path d="M16 9.5l5 5M21 9.5l-5 5"/></g>
+        </svg>
+      </button>
+      <input id="vol" type="range" min="0" max="100" value="55" aria-label="Music volume">
+    </div>
+  </footer>
+  <div id="foot">
+    <div id="credit">Borders: <a href="https://github.com/aourednik/historical-basemaps" target="_blank" rel="noopener">Historical Basemaps</a> (GPL-3.0) · Natural Earth · Catholic figures are rough estimates · Borders as of <span id="snapYear"></span></div>
+    <a id="promo" href="https://catholicpat.com" target="_blank" rel="noopener">Follow <b>Patrick Neve</b><span>catholicpat.com&nbsp;&rarr;</span></a>
+  </div>
+  <div id="tip" role="tooltip"></div>
+
+  <!-- opening -->
+  <div id="intro">
+    <div class="i-inner">
+      <h1>Orbis Catholicus</h1>
+      <div class="orn"><i></i><b>✠</b><i></i></div>
+      <p class="i-sub">Two thousand years of the Church and the world,<br>from Pentecost to the present day.</p>
+      <button id="begin">Explore the timeline</button>
+      <button id="explore" class="link">or watch the time-lapse</button>
+    </div>
+  </div>
+</main>
+
+<script src="lib/d3.min.js"></script>
+<script src="lib/topojson-client.min.js"></script>
+<script src="data.js"></script>
+<script src="cities.js"></script>
+<script src="music.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
